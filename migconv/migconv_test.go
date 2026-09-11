@@ -1,6 +1,9 @@
 package migconv
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFromGolangMigrateThenToGolangMigrate(t *testing.T) {
 	m, err := FromGolangMigrate(
@@ -62,6 +65,78 @@ func TestParseGooseMissingMarker(t *testing.T) {
 	_, err := ParseGoose("000001_create_users.sql", "CREATE TABLE users (id INTEGER);\n")
 	if err == nil {
 		t.Fatal("expected an error for a file with no goose markers, got nil")
+	}
+}
+
+func TestFormatGooseWrapsDollarQuotedFunctionBody(t *testing.T) {
+	up := "CREATE FUNCTION set_updated_at() RETURNS trigger AS $$\n" +
+		"BEGIN\n" +
+		"  NEW.updated_at = now();\n" +
+		"  RETURN NEW;\n" +
+		"END;\n" +
+		"$$ LANGUAGE plpgsql;\n"
+
+	_, content := FormatGoose(Migration{
+		Version: "000001",
+		Name:    "set_updated_at",
+		Up:      up,
+		Down:    "DROP FUNCTION set_updated_at();\n",
+	})
+
+	if !strings.Contains(content, gooseStatementBegin) || !strings.Contains(content, gooseStatementEnd) {
+		t.Fatalf("expected StatementBegin/StatementEnd markers around the function body, got:\n%s", content)
+	}
+
+	begin := strings.Index(content, gooseStatementBegin)
+	end := strings.Index(content, gooseStatementEnd)
+	if begin == -1 || end == -1 || end < begin {
+		t.Fatalf("StatementBegin/StatementEnd markers out of order in:\n%s", content)
+	}
+	body := content[begin:end]
+	if !strings.Contains(body, "NEW.updated_at = now();") {
+		t.Errorf("function body missing from wrapped statement:\n%s", body)
+	}
+
+	// The single-statement Down body must not be wrapped.
+	if strings.Count(content, gooseStatementBegin) != 1 {
+		t.Errorf("expected exactly one StatementBegin marker, got content:\n%s", content)
+	}
+}
+
+func TestFormatGooseDoesNotDoubleWrapExistingMarkers(t *testing.T) {
+	up := gooseStatementBegin + "\n" +
+		"CREATE FUNCTION set_updated_at() RETURNS trigger AS $$\n" +
+		"BEGIN\n" +
+		"  NEW.updated_at = now();\n" +
+		"  RETURN NEW;\n" +
+		"END;\n" +
+		"$$ LANGUAGE plpgsql;\n" +
+		gooseStatementEnd + "\n"
+
+	_, content := FormatGoose(Migration{
+		Version: "000001",
+		Name:    "set_updated_at",
+		Up:      up,
+		Down:    "DROP FUNCTION set_updated_at();\n",
+	})
+
+	if strings.Count(content, gooseStatementBegin) != 1 {
+		t.Errorf("expected an already-marked statement to keep exactly one StatementBegin marker, got:\n%s", content)
+	}
+}
+
+func TestFormatGooseDoesNotSplitOnSemicolonInsideStringLiteral(t *testing.T) {
+	up := "INSERT INTO notes (body) VALUES ('a; b; c');\n"
+
+	_, content := FormatGoose(Migration{
+		Version: "000001",
+		Name:    "seed_notes",
+		Up:      up,
+		Down:    "DELETE FROM notes;\n",
+	})
+
+	if strings.Contains(content, gooseStatementBegin) {
+		t.Errorf("a semicolon inside a string literal should not trigger StatementBegin/StatementEnd wrapping, got:\n%s", content)
 	}
 }
 

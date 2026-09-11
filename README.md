@@ -48,11 +48,16 @@ go run ./cmd/migconv -from goose -to golang-migrate -in ./goose_migrations -out 
 is created if it doesn't exist. Existing files in `-out` with the same
 name are overwritten.
 
+Converting golang-migrate SQL to goose also handles goose's
+`-- +goose StatementBegin` / `-- +goose StatementEnd` markers
+structurally: a statement containing a dollar-quoted body with
+semicolons of its own (a plpgsql trigger function, for example) is
+detected and wrapped in those markers automatically, since goose would
+otherwise split it into broken fragments. Reading an existing goose
+file that already has these markers leaves them untouched.
+
 ## Known limitations (first pass)
 
-- Goose's `-- +goose StatementBegin` / `-- +goose StatementEnd`
-  markers, used to protect multi-statement bodies like triggers, are
-  passed through as plain text rather than understood structurally.
 - Only the sequential/timestamp-prefixed filename convention is
   supported; goose's `.env` variant is out of scope for now.
 
