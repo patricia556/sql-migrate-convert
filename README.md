@@ -44,8 +44,11 @@ go run ./cmd/migconv -from golang-migrate -to goose -in ./migrations -out ./goos
 go run ./cmd/migconv -from goose -to golang-migrate -in ./goose_migrations -out ./migrations
 ```
 
-`-in` is scanned non-recursively; unrelated files are ignored. `-out`
-is created if it doesn't exist. Existing files in `-out` with the same
+`-in` is scanned recursively, so nested migration folders (for example,
+one subdirectory per service in a monorepo) are converted in place:
+each subdirectory's migrations are matched up and written back to the
+same subdirectory under `-out`. Unrelated files are ignored. `-out` is
+created if it doesn't exist. Existing files in `-out` with the same
 name are overwritten.
 
 Converting golang-migrate SQL to goose also handles goose's
