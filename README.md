@@ -51,6 +51,15 @@ same subdirectory under `-out`. Unrelated files are ignored. `-out` is
 created if it doesn't exist. Existing files in `-out` with the same
 name are overwritten.
 
+Add `-check` to see what a run would do without writing anything:
+
+```
+go run ./cmd/migconv -from golang-migrate -to goose -in ./migrations -out ./goose_migrations -check
+```
+
+This prints the path of every file that would be written and leaves
+`-out` untouched - it doesn't even need to exist yet.
+
 Converting golang-migrate SQL to goose also handles goose's
 `-- +goose StatementBegin` / `-- +goose StatementEnd` markers
 structurally: a statement containing a dollar-quoted body with

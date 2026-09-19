@@ -36,6 +36,7 @@ func run(args []string) error {
 	to := fs.String("to", "", `target format: "golang-migrate" or "goose"`)
 	in := fs.String("in", "", "directory to read migrations from")
 	out := fs.String("out", "", "directory to write converted migrations to")
+	check := fs.Bool("check", false, "report which files would be written without writing them")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -50,6 +51,10 @@ func run(args []string) error {
 	migrations, err := readMigrations(*from, *in)
 	if err != nil {
 		return err
+	}
+
+	if *check {
+		return reportMigrations(*to, *out, migrations)
 	}
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -204,6 +209,38 @@ func readGolangMigrateDir(dir, relDir string, names []string) ([]located, error)
 		migrations = append(migrations, located{dir: relDir, m: m})
 	}
 	return migrations, nil
+}
+
+// reportMigrations prints the path of every file writeMigration would
+// create for -to, without creating -out or writing anything, so -check
+// can be run against a read-only or nonexistent -out directory.
+func reportMigrations(format, outRoot string, migrations []located) error {
+	for _, loc := range migrations {
+		names, err := outputFilenames(format, loc.m)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			fmt.Println(filepath.Join(outRoot, loc.dir, name))
+		}
+	}
+	fmt.Printf("%d migration(s) would be converted to %s\n", len(migrations), format)
+	return nil
+}
+
+// outputFilenames returns the filename(s) writeMigration would write for m
+// under the given -to format.
+func outputFilenames(format string, m migconv.Migration) ([]string, error) {
+	switch format {
+	case "goose":
+		filename, _ := migconv.FormatGoose(m)
+		return []string{filename}, nil
+	case "golang-migrate":
+		upFilename, _, downFilename, _ := migconv.ToGolangMigrate(m)
+		return []string{upFilename, downFilename}, nil
+	default:
+		return nil, fmt.Errorf("unknown -to format %q", format)
+	}
 }
 
 func writeMigration(format, outRoot string, loc located) error {
